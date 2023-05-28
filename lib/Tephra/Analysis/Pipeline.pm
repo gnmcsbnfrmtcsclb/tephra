@@ -26,11 +26,11 @@ Tephra::Analysis::Pipeline - Methods for running the 'tephra all' command
 
 =head1 VERSION
 
-Version 0.12.5
+Version 0.14.0
 
 =cut
 
-our $VERSION = '0.12.5';
+our $VERSION = '0.14.0';
 $VERSION = eval $VERSION;
 
 has global_options => ( is => 'ro', isa => 'HashRef', required => 1 );
@@ -572,7 +572,7 @@ sub combine_age_files {
     my $t0 = gettimeofday();
     my $st = strftime('%d-%m-%Y %H:%M:%S', localtime);
 
-    my $re = qr/helitron\d+|(?:non_)?(?:LTR|LARD|TRIM)_retrotransposon\d+|terminal_inverted_repeat_element\d+|MITE\d+/;
+    my $re = qr/helitron\d+|(?:non_)?LTR_retrotransposon\d+|terminal_inverted_repeat_element\d+|LARD\d+|TRIM\d+|MITE\d+/;
 
     my $util = Tephra::Annotation::Util->new;
     my $repeat_map = $util->build_repeat_map;

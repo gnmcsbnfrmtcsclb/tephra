@@ -28,11 +28,11 @@ Tephra::LTR::LTRRefine - Refine LTR predictions based on multiple criteria
 
 =head1 VERSION
 
-Version 0.12.5
+Version 0.14.0
 
 =cut
 
-our $VERSION = '0.12.5';
+our $VERSION = '0.14.0';
 $VERSION = eval $VERSION;
 
 has genome => (
@@ -99,8 +99,6 @@ sub collect_features {
     my $self = shift;
     my ($gff_thresh_ref) = @_;
     my ($gff, $pid_thresh) = @{$gff_thresh_ref}{qw(gff pid_threshold)};
-
-
 
     my (%features, %intervals, %coord_map);
     my ($source, $seq_id, $start, $end, $length, $region);
@@ -568,7 +566,7 @@ sub reduce_features {
 	next if $s eq 'total_num';
 	my $l = 40 - length($s);
 	my $pad = ' ' x $l;
-	$log->info("Results - Number of elements filtered by '$s':$pad",$best_stats{$s});
+	$log->info("Results - Number of elements filtered by '$s':$pad ",$best_stats{$s});
     }
 
     $log->info("Results - Number of elements found with 'relaxed' constraints:                       $rel_tot");
@@ -666,8 +664,8 @@ sub sort_features {
 			$elem =~ s/\d+.*/$count/;
 
 			my $id = join "_", $elem, $chromosome, $start, $end;
-			#$id =~ s/LTR_/RLT_TRIM_/g
-			$id =~ s/LTR_/TRIM_/g
+			#$id =~ s/LTR_/RLT_TRIM/g
+			$id =~ s/LTR_retrotransposon/TRIM/g
 			    if $self->is_trim;
 
 			$self->_get_ltr_range($index, $id, $chromosome, $start, $end, $ofas);
@@ -684,7 +682,7 @@ sub sort_features {
 		    my $gff3_str = gff3_format_feature($entry);
 		    $gff_feats .= $gff3_str;
 		}
-		$gff_feats =~ s/LTR_/TRIM_/g 
+		$gff_feats =~ s/LTR_retrotransposon/TRIM/g
 		    if $self->is_trim;
 
 		print $ogff $gff_feats;
@@ -694,10 +692,10 @@ sub sort_features {
 	}
 	close $ogff;
 
-	#"Number of 'combined' non-overlapping elements:                              439"
+	#"Number of 'combined' non-overlapping elements: 439"
 	#say STDERR "\nTotal elements written: $elem_tot";
 	my $pad = ' ' x 51;	       
-	$log->info("Results - Total elements written:$pad",$elem_tot);
+	$log->info("Results - Total elements written:$pad ",$elem_tot);
     }
     else {
 	open my $in, '<', $gff, or die "\n[ERROR]: Could not open file: $gff\n";
@@ -714,7 +712,7 @@ sub sort_features {
 		$elem =~ s/\d+.*//;
 		$elem .= $count;
 		#$elem =~ s/LTR_/RLT_TRIM_/g 
-		$elem =~ s/LTR_/TRIM_/g
+		$elem =~ s/LTR_retrotransposon/TRIM/g
 		    if $self->is_trim;
 
 		my $id = join "_", $elem, $chromosome, $start, $end;
@@ -727,7 +725,7 @@ sub sort_features {
 	#say STDERR "\nTotal elements written: $elem_tot";
 	#$log->info("Results - Total elements written: $elem_tot");
 	my $pad = ' ' x 51;
-        $log->info("Results - Total elements written:$pad",$elem_tot);
+        $log->info("Results - Total elements written:$pad ",$elem_tot);
     }
     close $ofas;
 

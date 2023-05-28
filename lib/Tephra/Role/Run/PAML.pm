@@ -23,11 +23,11 @@ Tephra::Role::Run::PAML - Helper role for running PAML
 
 =head1 VERSION
 
-Version 0.12.5
+Version 0.14.0
 
 =cut
 
-our $VERSION = '0.12.5';
+our $VERSION = '0.14.0';
 $VERSION = eval $VERSION;
 
 has baseml_exec => (
@@ -156,8 +156,9 @@ sub parse_baseml {
     while (my $line = <$divin>) {
 	chomp $line;
 	if ($line =~ /^[35]prime?|unk-prime-[fr]?.*\s+/) {
-	    if ($line =~ /(\d+\.\d+)\(\s?(\-?\d+\.\d+)\)/) {
+	    if ($line =~ /(\d+\.\d+)\s+?\(\s?(\-?\d+\.\d+)\)/) {
 		# 3prime_Ung         0.0269( 8.7752)
+		# 5prime_RLC_singleton    0.023635 ( 4.3542)
 		my $divergence_time = $1;
 		my $kappa = $2;
 		my $time = $divergence_time/($subs_rate * 2);
@@ -189,8 +190,7 @@ sub _build_baseml_exec {
     }
     elsif (! defined $blexe) {
 	my $config = Tephra::Config::Exe->new->get_config_paths;
-	my ($pamlbin) = @{$config}{qw(pamlbin)};
-	$blexe = File::Spec->catfile($pamlbin, 'baseml');
+	$blexe = $config->{baseml};
 	if (-e $blexe && -x $blexe) {
 	    $self->set_baseml_exec($blexe);
 	    return $blexe;

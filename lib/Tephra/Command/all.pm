@@ -10,7 +10,6 @@ use Cwd           qw(abs_path);
 use Capture::Tiny qw(capture_merged);
 use File::Spec;
 use File::Basename;
-use Capture::Tiny;
 use Tephra -command;
 use Tephra::Config::Reader;
 use Tephra::Config::Exe;
@@ -18,7 +17,7 @@ use Tephra::Genome::Unmask;
 use Tephra::Analysis::Pipeline;
 #use Data::Dump::Color;
 
-our $VERSION = '0.12.5';
+our $VERSION = '0.14.0';
 
 sub opt_spec {
     return (    
@@ -52,7 +51,7 @@ sub validate_args {
 sub execute {
     my ($self, $opt, $args) = @_;
 
-    my $gff = _run_all_commands($opt);
+    my $success = _run_all_commands($opt);
 }
 
 sub _run_all_commands {
@@ -359,11 +358,9 @@ sub _run_all_commands {
 
     ## clean up
     my $exe_conf = Tephra::Config::Exe->new->get_config_paths;
-    my $gt = $exe_conf->{gt};
-    my $vmatchbin = $exe_conf->{vmatchbin};
-    my $clean_vmidx = File::Spec->catfile($vmatchbin, 'cleanpp.sh');
+    my ($gt, $cleanpp) = @{$exe_conf}{qw(gt cleanpp)};
 
-    $tephra_obj->capture_cmd($clean_vmidx);
+    $tephra_obj->capture_cmd($cleanpp);
     $tephra_obj->capture_cmd($gt, 'clean');
     my @fais = glob "*.fai";
     unlink @fais;
@@ -390,6 +387,8 @@ sub _run_all_commands {
 
     # Log summary of results
     $tephra_obj->log_interval( $tzero, $log );
+
+    return 1;
 }
 
 #

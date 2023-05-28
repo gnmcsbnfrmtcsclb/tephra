@@ -12,6 +12,7 @@ use File::Spec;
 use File::Find;
 use Bio::SearchIO;
 use Try::Tiny;
+#use Parallel::ForkManager;
 use Tephra::NonLTR::SeqUtils;
 use Tephra::Config::Exe;
 use namespace::autoclean;
@@ -24,21 +25,21 @@ Tephra::NonLTR::RunHMM - Search for non-LTR coding domains (adapted from MGEScan
 
 =head1 VERSION
 
-Version 0.12.5
+Version 0.14.0
 
 =cut
 
-our $VERSION = '0.12.5';
+our $VERSION = '0.14.0';
 $VERSION = eval $VERSION;
 
 has fasta    => ( is => 'ro', isa => 'Path::Class::File', required => 1, coerce => 1 );
-has fastadir => ( is => 'ro', isa => 'Path::Class::File', required => 1, coerce  => 1 );
+has fastadir => ( is => 'ro', isa => 'Path::Class::File', required => 1, coerce => 1 );
 has outdir   => ( is => 'ro', isa => 'Path::Class::Dir',  required => 1, coerce => 1 );
 has phmmdir  => ( is => 'ro', isa => 'Path::Class::Dir',  required => 1, coerce => 1 );
 has pdir     => ( is => 'ro', isa => 'Path::Class::Dir',  required => 1, coerce => 1 );
-
-has verbose  => ( is => 'ro', isa => 'Bool', predicate  => 'has_verbose', lazy => 1, default => 0 );
-has strand   => ( is => 'ro', isa => 'Str',  required => 1, default  => 'plus' );
+has threads  => ( is => 'ro', isa => 'Int',  predicate => 'has_threads', lazy => 1, default => 1 );
+has verbose  => ( is => 'ro', isa => 'Bool', predicate => 'has_verbose', lazy => 1, default => 0 );
+has strand   => ( is => 'ro', isa => 'Str',  required  => 1, default  => 'plus' );
 
 sub run_mgescan {
     my $self = shift;
@@ -48,6 +49,11 @@ sub run_mgescan {
     my $phmm_dir = $self->phmmdir->absolute->resolve;
     my $pdir     = $self->pdir->absolute->resolve;
     my $strand   = $self->strand;
+
+    # set PATHs for mgescan
+    my $config = Tephra::Config::Exe->new->get_config_paths;
+    my ($tephrabin, $mgescan, $chrhmm) = @{$config}{qw(tephrabin mgescan chrhmm)};
+    $ENV{PATH} = join ':', $ENV{PATH}, $tephrabin;
 
     my $sequtils = Tephra::NonLTR::SeqUtils->new( verbose => $self->verbose );
     my ($dna_name, $dna_path, $dna_suffix) = fileparse($dna_file, qr/\.[^.]*/);
@@ -71,6 +77,14 @@ sub run_mgescan {
 	return;
     }
 
+    # set up parallel processing of both RT and APE domains
+    #my $pm = Parallel::ForkManager->new(2);
+    #local $SIG{INT} = sub {
+        #warn("Caught SIGINT; Waiting for child processes to finish.");
+        #$pm->wait_all_children;
+        #exit 1;
+    #};
+
     say STDERR "    RT signal..." if $self->verbose;
     my $phmm_file = File::Spec->catfile($phmm_dir, 'ebi_ds36752_seq.hmm');
     my $domain_rt_pos_file = File::Spec->catfile($pos_dir, $dna_name.$dna_suffix.'.rt.pos');
@@ -80,7 +94,19 @@ sub run_mgescan {
     $phmm_file = File::Spec->catfile($phmm_dir, 'ebi_ds36736_seq.hmm');
     my $domain_ape_pos_file = File::Spec->catfile($pos_dir, $dna_name.$dna_suffix.'.ape.pos');
     $self->get_signal_domain($pep_file, $phmm_file, $domain_ape_pos_file);
-    
+    #$self->get_signal_domain($pep_file, $phmm_file, $domain_rt_pos_file);
+    #for my $file ($domain_ape_pos_file, $domain_rt_pos_file) {
+	#say STDERR "====> SEARCHING $file";
+        #$pm->start($file) and next;
+        #$SIG{INT} = sub { $pm->finish };
+        
+	#$self->get_signal_domain($pep_file, $phmm_file, $file); 
+
+        #$pm->finish(0);
+    #}
+
+    #$pm->wait_all_children;
+
     # generate corresponsing empty domains files if either of them does not exist 
     if (-e $domain_rt_pos_file || -e $domain_ape_pos_file ) {
 	#print $dna_name."\n" if $self->verbose;	
@@ -89,7 +115,7 @@ sub run_mgescan {
 	    print $out "";
 	    close $out;
 	}
-	elsif (! -e $domain_ape_pos_file){
+	elsif (! -e $domain_ape_pos_file) {
 	    open my $out, '>', $domain_ape_pos_file or die "\n[ERROR]: Could not open file: $domain_ape_pos_file\n";
 	    print $out "";
 	    close $out;
@@ -97,18 +123,12 @@ sub run_mgescan {
 
 	# run hmm
 	say STDERR "Running HMM..." if $self->verbose;
-
-	my $mgescan  = File::Spec->catfile($pdir, 'hmm', 'tephra-MGEScan');
 	my $out_file = File::Spec->catfile($outf_dir, $dna_name.$dna_suffix);
-	my $chrhmm   = File::Spec->catfile($pdir, 'hmm', 'chr.hmm');
 	my $ldir = $pdir.'/';
 	$outf_dir .= '/';
-	my $tephra_dir = $ENV{TEPHRA_DIR} // File::Spec->catfile($ENV{HOME}, '.tephra');
-	$ENV{PATH} = join ':', $ENV{PATH}, File::Spec->catfile($tephra_dir, 'EMBOSS-6.5.7', 'bin');
 	my $cmd = "$mgescan -m $chrhmm -s $dna_file -r $domain_rt_pos_file -a $domain_ape_pos_file -o $out_file -p $ldir -d $outf_dir";
 	say STDERR "CMD: $cmd" if $self->verbose;
 	system($cmd);
-	#exit;
     }
 
     # not implemented
@@ -121,7 +141,8 @@ sub run_mgescan {
 
 sub get_signal_domain {
     my $self = shift;
-    my ($pep_file, $phmm_file, $domain_rt_pos_file) = @_;
+    my ($pep_file, $phmm_file, $domain_pos_file) = @_;
+    my $threads = $self->threads;
 
     # debugging
     my ($pname, $ppath, $psuffix) = fileparse($phmm_file, qr/\.[^.]*/);
@@ -131,13 +152,13 @@ sub get_signal_domain {
     my %domain_end;
     my %domain_pos;
     my $evalue;
-    my $temp_file   = $domain_rt_pos_file.'temp';
-    my $stemp_file  = $domain_rt_pos_file.'temp_sorted';
-    my $output_file = $domain_rt_pos_file;
+    my $temp_file   = $domain_pos_file.'temp';
+    my $stemp_file  = $domain_pos_file.'temp_sorted';
+    my $output_file = $domain_pos_file;
 
     # run hmmsearch to find the domain and save it in the temprary file
     my $hmmsearch   = $self->find_hmmsearch;
-    my @hmm_results = capture([0..5], $hmmsearch, '-E', '0.00001', $phmm_file, $pep_file);
+    my @hmm_results = capture([0..5], $hmmsearch, '--cpu', $threads, '-E', '0.00001', $phmm_file, $pep_file);
     $self->_parse_hmmsearch(\@hmm_results, $signal_out, $temp_file);
 
     if (-s $temp_file) {	

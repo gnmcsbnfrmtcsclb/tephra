@@ -24,6 +24,9 @@ This file is for logging feature requests and bugs during development. Hopefully
  - [x] LARD annotation method not working for GFF3 as of v0.11.0
  - [x] Family number in FASTA/GFF3 not aligned with that in domain organization file
  - [x] Domain order is incorrect in family-level domain classication file as of v0.11.0
+ - [ ] Add tests for Tephra::Annotation::MakeExemplars class. Currently it is not evaluated (requires larger families to test).
+       This will mean tests will take much longer, but the only want to test this feature is to use the Dev test data for all tests,
+       including the 'findltrs' and 'classifyltrs' commands.
 
 ## Command `tephra findtirs`
  - [x] Find all non-overlapping TIR elements passing thresholds
@@ -33,6 +36,7 @@ This file is for logging feature requests and bugs during development. Hopefully
        number of DTX elements. Add this to the configuration file for the 'all' command the same as for LTRs.
  - [x] Mark short elements with no coding potential as MITEs
  - [x] Output FASTA along with GFF3 like other commands
+ - [ ] Split input genome by chromosome to parallelize this (the most time-consuming) part of the analysis
 
 ## Command `tephra sololtr`
  - [x] Create HMM of LTRs for each LTR-RT
@@ -100,12 +104,12 @@ This file is for logging feature requests and bugs during development. Hopefully
 
 ## Command `tephra findnonltrs`
  - [ ] break chromosomes to reduce memory usage in hmmsearch (only applies to HMMERv3)
- - [x] check HMMERv22 var and program version
+ - [x] check HMMERv2 var and program version
  - [x] remove backticks and shell exec of hmmer
  - [x] remove nasty regex parsing in favor or bioperl reading of report
  - [x] use list form of system to not fork
  - [x] run domain searches in parallel
- - [ ] use multiple CPUs (make option) for domain searches
+ - [x] use multiple CPUs (make option) for domain searches
  - [x] write GFF of results
  - [x] add verbose option so as to not print progress when there are 5k scaffolds
  - [x] write combined file of all elements
@@ -116,8 +120,9 @@ This file is for logging feature requests and bugs during development. Hopefully
  - [ ] investigate issues related to why most elements reported on negative strand and contain
        many gaps
  - [ ] output protein domain sequences for phylogenetic analyses
- - [ ] refactor methods to use shared indexing and domain mapping methods
+ - [x] refactor methods to use shared indexing and domain mapping methods
  - [ ] switch to using HMMERv3 models/programs from HMMERv2
+ - [ ] write GO terms to GFF3 for domains
 
 ## Command `tephra ltrage`
  - [x] Calculate age for each LTR-RT
@@ -167,7 +172,7 @@ This file is for logging feature requests and bugs during development. Hopefully
  - [x] Remove duplicate header in family-level domain organization file
  - [x] Fix Parent IDs getting mixed up when combining LTRs and TRIMs
  - [ ] Add final statistic showing full-length:solo-LTR:truncated ratios
- - [ ] Investigate vertical alignment of stats in log. This appears in Docker image in v0.12.1
+ - [x] Investigate vertical alignment of stats in log. This appears in Docker image in v0.12.1
 
 ## Command `tephra reannotate`
 
@@ -190,7 +195,7 @@ This file is for logging feature requests and bugs during development. Hopefully
        as this will make the package harder to use and maintain).
  - [x] handle compressed input/output (added for 'all' command in v0.12.3)
  - [X] add fasta-handling classes from Transposome, which are faster than BioPerl (Won't do: Added kseq.h methods from HTSlib)
- - [ ] add verbose option for quickly debugging the installation of dependencies
+ - [x] add verbose option for quickly debugging the installation of dependencies
  - [x] add command to get TIR ages
  - [x] investigate why tests fail with Perl version 5.12 or lower (Bio::DB::HTS needs 5.14.2, so that's why)
  - [x] add subcommand to run/log all methods as a pipeline
@@ -206,8 +211,11 @@ This file is for logging feature requests and bugs during development. Hopefully
  - [x] add method to install MUSCLE along with other deps (added in v0.12.1)
  - [ ] check to see if we are calculating examplars for all TE types
  - [x] in DEV test mode, use A. thaliana for all tests
+ - [ ] in DEV test mode, change ENV var to 'dev' instead of 'development'
+ - [ ] adjust alignment of stats in log to be right-justified
 
 ## Docker image
- - [ ] reduce EMBOSS install to only required programs
+ - [x] reduce EMBOSS install to only required programs
  - [ ] do not install BerkeleyDB and DB_FILE (Perl) since they are only recommended now, not required, by BioPerl since
        v1.7x
+ - [ ] get tag from github on build so we are not just pulling the main branch, which may be out of sync with the latest tag

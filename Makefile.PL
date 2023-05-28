@@ -4,6 +4,10 @@ use ExtUtils::MakeMaker;
 use Cwd;
 use lib qw(lib);
 use Tephra::Config::Install;
+use Getopt::Long;
+
+my %opts;
+GetOptions(\%opts, 'debug|d');
 
 if (eval ($ExtUtils::MakeMaker::VERSION) <= 6.55) {
     print "\n[[ERROR]]: ExtUtils::MakeMaker >= 6.5503 is required to build the package correctly.\n";
@@ -14,7 +18,7 @@ if (eval ($ExtUtils::MakeMaker::VERSION) <= 6.55) {
 
 WriteMakefile(
     NAME             => 'Tephra',
-    AUTHOR           => q{S. Evan Staton <statonse@gmail.com>},
+    AUTHOR           => q{S. Evan Staton <evan@evanstaton.com>},
     VERSION_FROM     => 'bin/tephra',
     LICENSE          => 'MIT',
     PL_FILES         => {},
@@ -48,13 +52,13 @@ WriteMakefile(
     EXE_FILES   => [ 'bin/tephra', 'bin/tephra-getphmm' ],
     dist  => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
     test  => { TESTS => 't/*.t' },
-    clean => { FILES => [ 't/test_data/*.fai', 'src/*.o', 'src/tephra-*' ] },
+    clean => { FILES => [ 't/test_data/*.fai', 'src/*.o', 'src/tephra-*', 't/test_data/TAIR*' ] },
 );
 
 {
     print STDERR "=====> Configuring Tephra, this may take some time...";
     my $cwd = getcwd();
-    my $confobj = Tephra::Config::Install->new( workingdir => $cwd );
+    my $confobj = Tephra::Config::Install->new( workingdir => $cwd, debug => $opts{debug} );
     my $config  = $confobj->configure_root;
 }
 

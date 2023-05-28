@@ -25,16 +25,17 @@ Tephra::NonLTR::QValidation - Valididate non-LTR search results against all mode
 
 =head1 VERSION
 
-Version 0.12.5
+Version 0.14.0
 
 =cut
 
-our $VERSION = '0.12.5';
+our $VERSION = '0.14.0';
 $VERSION = eval $VERSION;
 
 has fasta   => ( is => 'ro', isa => 'Path::Class::File', required => 1, coerce => 1 );
 has outdir  => ( is => 'ro', isa => 'Path::Class::Dir',  required => 1, coerce => 1 );
 has phmmdir => ( is => 'ro', isa => 'Path::Class::Dir',  required => 1, coerce => 1 );
+has threads => ( is => 'ro', isa => 'Int',  predicate => 'has_threads', lazy => 1, default => 1 );
 
 sub validate_q_score {
     my $self = shift;
@@ -92,10 +93,11 @@ sub validate_q_score {
 					     clade_dirs => \@cladedirs,
 					     valid_dir  => $validation_dir,
 					     genome     => $genome });
-	unless (defined $dom->{domain}) {
-	    say STDERR "\n[MAYDAY]: domain => $domain, $dir, $hmm_dir, $validation_dir, $genome";
 
-	}
+	#unless (defined $dom->{domain}) {
+	    #say STDERR "\n[MAYDAY]: domain => $domain, $dir, $hmm_dir, $validation_dir, $genome";
+	    #dd $dom;
+	#}
 
 	$pm->finish(0, $dom);
     }
@@ -111,19 +113,23 @@ sub get_domain_coords {
 
     my $clade = $obj->{domain} eq 'en' ? $obj->{en_clade} : $obj->{all_clade};
 
-    $self->get_domain_for_full_frag($obj->{genome}, $obj->{domain}, $clade,  $obj->{dir}, $obj->{hmm_dir});
-    $self->get_QVal($obj->{domain}, $obj->{clade_dirs}, $obj->{valid_dir}, $obj->{hmm_dir}, $clade);
+    $self->get_domain_for_full_frag($obj, $clade);
+    $self->get_QVal($obj, $clade);
 
     return { domain => $obj->{domain} };
 }
 
 sub get_QVal {
     my $self = shift;
-    my ($domain, $cladedirs, $validation_dir, $hmm_dir, $dom_clade) = @_;
+    my ($obj, $dom_clade) = @_;
+
+    my ($domain, $clade_dirs, $validation_dir, $hmm_dir) =
+        @{$obj}{qw(domain clade_dirs valid_dir hmm_dir)};
+
     my $validation_file = File::Spec->catfile($validation_dir, $domain);
     my $evalue_file     = File::Spec->catfile($validation_dir, $domain.'_evalue');
 
-    for my $clade (@$cladedirs) {
+    for my $clade (@$clade_dirs) {
         my $name = basename($clade);
         my $seq  = File::Spec->catfile($clade, $name.'.'.$domain.'.pep');
         if (-e $seq) {
@@ -136,7 +142,10 @@ sub get_QVal {
 
 sub get_domain_for_full_frag {
     my $self = shift;
-    my ($genome, $domain, $clade_dir, $dir, $hmm_dir) = @_;
+    my ($obj, $clade_dir) = @_;
+
+    my ($genome, $domain, $dir, $hmm_dir) =
+	@{$obj}{qw(genome domain dir hmm_dir)};
 
     for my $clade (@$clade_dir) {
 	my $resdir   = File::Spec->catdir($dir, 'info', 'full', $clade);
@@ -200,7 +209,6 @@ sub get_full_frag {
 
     return;
 }
-
 
 sub get_domain_pep_seq {
     my $self = shift;
@@ -286,8 +294,9 @@ sub get_domain_dna_seq {
     my $self = shift;
     my ($pep_file, $phmm_file, $result_dna_file, $dna_file, $flag) = @_;
 
+    my $threads = $self->threads;
     my $hmmsearch = $self->find_hmmsearch;
-    my @hmm_results = capture([0..5], $hmmsearch, $phmm_file, $pep_file);
+    my @hmm_results = capture([0..5], $hmmsearch, '--cpu', $threads, $phmm_file, $pep_file);
     my (%domain_start, %domain_end, %result_start, %result_end, %uniq_head);
 
     #say "debug2 hmmermatch qvalidation: $1";

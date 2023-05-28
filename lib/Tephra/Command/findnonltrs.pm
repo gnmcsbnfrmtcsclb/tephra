@@ -16,12 +16,14 @@ use Tephra -command;
 use Tephra::NonLTR::NonLTRSearch;
 use Tephra::NonLTR::GFFWriter;
 use Tephra::Classify::Any;
+use Carp 'croak';
+#use Data::Dump::Color;
 
 sub opt_spec {
     return (    
 	[ "genome|g=s",    "The genome sequences in FASTA format to search for non-LTR-RTs " ],
 	[ "reference|r=s", "The non-masked reference genome for base correction "            ], 
-	[ "pdir|d=s",      "The directory to search for HMMs (configured automatically) "    ],
+	[ "pdir|p=s",      "The directory to search for HMMs (configured automatically) "    ],
 	[ "outdir|d=s",    "The location to place the results "                              ],
 	[ "gff|o=s",       "The GFF3 outfile to place the non-LTRs found in <genome> "       ],
 	[ "threads|t=i",   "The number of threads to use for BLAST searches (Default: 1)  "  ],
@@ -74,11 +76,13 @@ sub _run_nonltr_search {
     my $gff       = $opt->{gff};
     my $pdir      = $opt->{pdir} // $ENV{TEPHRA_DIR} // File::Spec->catdir($ENV{HOME}, '.tephra');
     my $verbose   = $opt->{verbose} // 0;
+    my $threads   = $opt->{threads} // 1;
 
     my $nonltr_obj = Tephra::NonLTR::NonLTRSearch->new(
 	genome  => $genome,
 	outdir  => $outdir,
 	pdir    => $pdir,
+	threads => $threads,
 	verbose => $verbose );
     
     my ($genomedir, $outputdir) = $nonltr_obj->find_nonltrs;
@@ -104,16 +108,19 @@ sub _run_nonltr_search {
 sub _find_nonltr_families {
     my ($opt, $obj, $sf_elem_map) = @_;
 
+    #dd $obj;
+    #dd $sf_elem_map and exit;
     my ($name, $path, $suffix) = fileparse($opt->{gff}, qr/\.[^.]*/);
     my $fasta = $opt->{fasta} // File::Spec->catfile($path, $name.'.fasta');
     my $threads = $opt->{threads} // 1;
 
     my $anno_obj = Tephra::Classify::Any->new(
-        fasta   => $obj->{fasta},
-        gff     => $opt->{gff},
-        threads => $threads,
-        outdir  => $path,
-    );
+	gff     => $opt->{gff},
+	threads => $threads,
+	type    => 'non-LTR',
+     );
+    
+    my $seqstore = $anno_obj->store_seq($obj->{fasta});
 
     my ($logfile, $log);
     if ($opt->{logfile}) {
@@ -126,36 +133,87 @@ sub _find_nonltr_families {
         say STDERR "\n[WARNING]: '--logfile' option not given so results will be appended to: $logfile.\n";
     }
 
-    my $blast_report = $anno_obj->process_blast_args;
-
-    if (defined $blast_report) {
-	my $matches = $anno_obj->parse_blast($blast_report);
-	my ($fams, $ids, $sfmap, $family_stats) = 
-	    $anno_obj->write_families($obj->{fasta}, $matches, $sf_elem_map, 'non-LTR');
-	my $totct = $anno_obj->combine_families($fams, $fasta);
-	$anno_obj->annotate_gff($ids, $obj->{gff}, $sf_elem_map);
-	
-	my ($elemct, $famct, $famtot, $singct) =
-	    @{$family_stats}{qw(total_elements families total_in_families singletons)};
-	
-	$log->info("Results - Number of non-LTR families:                         $famct");
-	$log->info("Results - Number of non-LTR elements in families:             $famtot");
-	$log->info("Results - Number of non-LTR singleton families/elements:      $singct");
-	$log->info("Results - Number of non-LTR elements (for debugging):         $elemct");
-	$log->info("Results - Number of non-LTR elements written (for debugging): $totct");
-	
-	unlink $_ for keys %$fams;
-	unlink @{$obj}{qw(fasta gff)};
+    my (%families, %family_files, %family_map);
+    for my $elem (keys %$sf_elem_map) {
+        push @{$families{ $sf_elem_map->{$elem} }}, $elem;
     }
-    else {
-	say STDERR "\n[WARNING]: No BLAST hits were found so no non-LTR families could be determined.\n";
-        move $obj->{fasta}, $fasta or die "\n[ERROR]: move failed: $!\n";
-        move $obj->{gff}, $opt->{gff} or die "\n[ERROR]: move failed: $!\n";
+ 
+    for my $fam (keys %families) { 
+        my $famfile = File::Spec->catfile( abs_path($path), $fam.'_elements.fasta' );
+        $family_files{$fam} = $famfile;
+
+        open my $out, '>', $famfile or die "\n[ERROR]: Could not open file: $famfile\n";
+        
+        for my $elem (@{$families{$fam}}) {
+            if (exists $seqstore->{$elem}) {
+                say $out join "\n", ">$elem", $seqstore->{$elem};
+            }
+            else {
+                croak "\n[ERROR]: $elem not found in store. Exiting.";
+            }
+        }
+	close $out;
+    }
+    #say "===> FAMILY_FILES";
+    #dd \%family_files;#
+
+    my ($elemct, $famct, $singct, $famtot) = (0, 0, 0, 0);
+    for my $family (sort keys %family_files) {
+	my $blast_report = $anno_obj->process_blast_args($family_files{$family});
+
+	my $matches;
+	if (defined $blast_report) {
+	    $matches = $anno_obj->parse_blast($blast_report);
+	}
+	else {
+	    $matches = {};
+	}
+	
+	my ($fams, $ids, $family_stats) = 
+	    $anno_obj->write_families($family_files{$family}, $matches, $sf_elem_map, $famct, $singct, $famtot);
+
+	#say join q{ }, "DEBUG:", "FAMILY", "TOTAL_ELEMENTS", "FAMILIES", "TOTAL_IN_FAMILIES", "SINGLETONS";
+	#say join q{ }, "         $family", $family_stats->{total_elements}, $family_stats->{families}, 
+	#$family_stats->{total_in_families}, $family_stats->{singletons};
+
+	$elemct += $family_stats->{total_elements};
+	$famct  += $family_stats->{families};
+	$famtot += $family_stats->{total_in_families};
+	$singct += $family_stats->{singletons};
+
+	# add files to objects
+	$family_map{$family} = { IDS => $ids, FAMS => $fams };
+
+	#else {
+	    #say STDERR "\n[WARNING]: No BLAST hits were found so no non-LTR families could be determined.\n";
+            #move $obj->{fasta}, $fasta or die "\n[ERROR]: move failed: $!\n";
+            #move $obj->{gff}, $opt->{gff} or die "\n[ERROR]: move failed: $!\n";  
+	#}
+    }
+
+    my $totct = $anno_obj->combine_families(\%family_map, $fasta);
+    $anno_obj->annotate_gff(\%family_map, $obj->{gff}, $sf_elem_map);
+    
+    $log->info("Results - Number of non-LTR families:                         $famct");
+    $log->info("Results - Number of non-LTR elements in families:             $famtot");
+    $log->info("Results - Number of non-LTR singleton families/elements:      $singct");
+    $log->info("Results - Number of non-LTR elements (for debugging):         $elemct");
+    $log->info("Results - Number of non-LTR elements written (for debugging): $totct");
+    
+    # clean up intermediate files
+    unlink $_ for values %family_files;
+    unlink @{$obj}{qw(fasta gff)};
+    for my $fam (keys %family_map) {
+	for my $fam_file (keys %{$family_map{$fam}{FAMS}}) {
+	    unlink $fam_file;
+	}
     }
 
     # clean up analysis directories after searching for families
     for my $dir (@{$obj->{fasta_dirs}}) {
 	remove_tree( $dir, { safe => 1 } );
+	remove_tree( $dir.'_b', { safe => 1 } )
+	    if -e $dir.'_b';
     }
 
     return;
@@ -233,11 +291,11 @@ The genome sequences in FASTA format to search for non-LTR-RTs.
  The non-masked reference genome for base correction. If a masked genome was used to search for non-LTRs,
  it is desirable to correct the bases using the original non-masked reference sequence.
 
-=item -o, --outdir
+=item -d, --outdir
 
  The directory name to place the resulting GFF file (and run the analysis).
 
-=item -d, --pdir
+=item -p, --pdir
 
  The directory to search for HMMs. This should be configured automatically during installation and this option should only have to be used by developers.
 

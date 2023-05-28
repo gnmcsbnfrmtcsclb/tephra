@@ -21,11 +21,11 @@ Tephra::NonLTR::SeqUtils - Minor sequence utilities for non-LTR finding
 
 =head1 VERSION
 
-Version 0.12.5
+Version 0.14.0
 
 =cut
 
-our $VERSION = '0.12.5';
+our $VERSION = '0.14.0';
 $VERSION = eval $VERSION;
 
 has verbose => ( is => 'ro', isa => 'Bool', predicate  => 'has_verbose', lazy => 1, default => 0 );
@@ -92,13 +92,13 @@ sub translate {
         exit(1);
     }
 
+    ##TODO: Add a check here if the output is defined/exists, and return result appropriately
     my $kseq = Bio::DB::HTS::Kseq->new($tmp_file);
     my $iter = $kseq->iterator;
 
     say STDERR "=====> Writing translated output: $out" if $self->verbose;
     open my $outfh, '>', $out or die "\n[ERROR]: Could not open file: $out\n";
     my $filename = basename($in);
-    my $genfh;
 
     while (my $seqio = $iter->next_seq) {
 	my $id = $seqio->name;

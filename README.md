@@ -1,22 +1,15 @@
 # Tephra
 A tool for discovering transposable elements and describing patterns of genome evolution
 
-[![Build Status](https://travis-ci.org/sestaton/tephra.svg?branch=master)](https://travis-ci.org/sestaton/tephra) [![Coverage Status](https://coveralls.io/repos/github/sestaton/tephra/badge.svg?branch=master)](https://coveralls.io/github/sestaton/tephra?branch=master) [![GitHub version](https://badge.fury.io/gh/sestaton%2Ftephra.svg)](https://badge.fury.io/gh/sestaton%2Ftephra)
+Build|Coverage|Github Version|Docker Image Size|Docker Pulls
+---|---|---|---|---
+[![CI](https://github.com/sestaton/tephra/actions/workflows/main.yml/badge.svg)](https://github.com/sestaton/tephra/actions/workflows/main.yml) | [![codecov](https://codecov.io/gh/sestaton/tephra/branch/master/graph/badge.svg?token=MH622EAL1G)](https://codecov.io/gh/sestaton/tephra) | [![GitHub version](https://badge.fury.io/gh/sestaton%2Ftephra.svg)](https://badge.fury.io/gh/sestaton%2Ftephra) | ![Docker Image Size](https://badgen.net/docker/size/sestaton/tephra?icon=docker&label=image%20size) | ![Pulls](https://img.shields.io/docker/pulls/sestaton/tephra.svg)
 
 ### What is Tephra?
 
 Tephra is a command line application to annotate [transposable elements](http://en.wikipedia.org/wiki/Transposable_element) from a genome assembly. The goal is to provide a high quality set of *de novo* annotations for all transposon types, describe the structure and evolution of those sequences, and do it without a reference set of transposon sequences (therefore being unbiased as possible).
 
 **RECOMMENDED USAGE**
-
-With [Singularity](https://sylabs.io/docs/), you will want to pull the latest container version and then run the container:
-
-    singularity pull library://sestaton/default/tephra
-    singularity shell -C --bind $PWD/db:/db tephra_latest.sif
-
-That assumes you have your data files for analysis (genome, config file, etc.) in a directory called `db` in the current working directory. After that, change to the `/db` directory and run your analysis.
-
----
 
 With [Docker](https://www.docker.com/), you can create a container to run Tephra with the following command:
 
@@ -26,9 +19,9 @@ That will create a container called `tephra-con` and start an interactive shell.
 
     tephra all -c tephra_config.yml
 
-I recommend using `nohup` and then logging out, which will allow you to leave the container running in the background (I will expand this part of the install by v0.13.0).
+I recommend using `nohup` and then logging out, which will allow you to leave the container running in the background.
 
-If you cannot use Singularity or Docker, please see the [INSTALL](https://github.com/sestaton/tephra/blob/master/INSTALL.md) file included with this distribution to install Tephra on various operating systems.
+If you cannot use Docker, please see the [INSTALL](https://github.com/sestaton/tephra/blob/master/INSTALL.md) file included with this distribution to install Tephra on various operating systems.
 
 **BASIC USAGE**
 
@@ -36,12 +29,12 @@ Tephra is a command-line program only for now. The command `tephra` itself contr
 
     $ tephra 
 
-    Tephra version 0.12.5
+    Tephra version 0.14.0
     
-    Copyright (C) 2015-2019 S. Evan Staton
+    Copyright (C) 2015-2023 S. Evan Staton
     LICENSE -- MIT
 
-    Citation: Staton, SE. 2019. https://github.com/sestaton/tephra
+    Citation: Staton, SE. 2023. https://github.com/sestaton/tephra
 
     Name:
          Tephra - A tool for discovering transposable elements and describing
@@ -71,7 +64,8 @@ Tephra is a command-line program only for now. The command `tephra` itself contr
             maskref: Mask a reference genome with transposons.
          reannotate: Transfer annotations from a reference set of repeats to Tephra annotations.
             sololtr: Find solo-LTRs in a genome assembly.
-    
+               info: Show version information for all external programs configured and used by Tephra.
+	       
     Most common usage:
     
         tephra all -c tephra_config.yml
@@ -168,7 +162,7 @@ Part of this project uses code from [MGEScan-nonLTR](http://darwin.informatics.i
 
 The license for Tephra is below:
 
-Copyright (C) 2015-2019 S. Evan Staton
+Copyright (C) 2015-2023 S. Evan Staton
 
 This program is distributed under the MIT (X11) License, which should be distributed with the package.
 If not, it can be found here: http://www.opensource.org/licenses/mit-license.php

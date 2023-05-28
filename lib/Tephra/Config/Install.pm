@@ -25,11 +25,11 @@ Tephra::Config::Install - Class for setting up Tephra dependencies
 
 =head1 VERSION
 
-Version 0.12.5
+Version 0.14.0
 
 =cut
 
-our $VERSION = '0.12.5';
+our $VERSION = '0.14.0';
 
 has basedir => (
     is       => 'ro',
@@ -48,99 +48,112 @@ has workingdir => (
     coerce   => 1 
 );
 
+has debug => (
+    is         => 'ro',
+    isa        => 'Bool',
+    predicate  => 'has_debug',
+    lazy       => 1,
+    default    => 0,
+);
+
 sub configure_root {
     my $self = shift;
     my $basedir = $self->basedir; #->absolute->resolve;
+    my $debug = $self->debug;
 
     my $config = Tephra::Config::Exe->new( basedir => $basedir )->get_config_paths;
 
-    unless (-e $config->{gt} && -x $config->{gt}) {
-	#say STDERR "getting gt";
-	$config->{gt} = $self->fetch_gt_exes;
+    unless (-e $config->{transeq}) {
+	say STDERR "getting EMBOSS" if $debug;
+	$config->{transeq} = $self->fetch_emboss($config->{tephrabin});
 	print STDERR ".";
     }
 
-    unless (-e $config->{vmatchbin} && -x $config->{vmatchbin}) {
-	#say STDERR "getting vmatch";
-	$config->{vmatchbin} = $self->fetch_vmatch_exes;
+    unless (-e $config->{gt} && -x $config->{gt} &&
+	    -e $config->{gtdata} && -d $config->{gtdata}) {
+	say STDERR "getting GenomeTools" if $debug;
+	$config->{gt} = $self->fetch_gt_exes($config->{tephrabin});
+	print STDERR ".";
+    }
+
+    unless (-e $config->{vmatch} && -x $config->{vmatch} &&
+	    -e $config->{mkvtree} && -x $config->{mkvtree} &&
+	    -e $config->{cleanpp} && -x $config->{cleanpp}) {
+	say STDERR "getting Vmatch" if $debug;
+	($config->{vmatch}, $config->{mkvtree}, $config->{cleanpp}) = $self->fetch_vmatch_exes($config->{tephrabin});
 	print STDERR ".";
     }
     
     unless (-e $config->{hscanjar}) {
-	#say STDERR "getting hscan";
+	say STDERR "getting HSCAN" if $debug;
 	$config->{hscanjar} = $self->fetch_hscan;
 	print STDERR ".";
     }
     
     unless (-e $config->{hmmer2bin}) {
-	#say STDERR "getting hmmer2";
+	say STDERR "getting HMMER2" if $debug;
 	$config->{hmmer2bin} = $self->fetch_hmmer2;
 	print STDERR ".";
     }
     
     unless (-e $config->{hmmer3bin}) {
-	#say STDERR "getting hmmer3";
+	say STDERR "getting HMMER3" if $debug;
         $config->{hmmer3bin} = $self->fetch_hmmer3;
         print STDERR ".";
     }
     
     unless (-e $config->{trnadb}) {
-	#say STDERR "getting trnadb";
+	say STDERR "getting tRNAdb" if $debug;
 	$config->{trnadb} = $self->fetch_trnadb;
 	print STDERR ".";
     }
 
     unless (-e $config->{hmmdb}) {
-	#say STDERR "getting hmmdb";
+	say STDERR "getting HMMDB" if $debug;
 	$config->{hmmdb} = $self->fetch_hmmdb;
 	print STDERR ".";
     }
 
     unless (-e $config->{modeldir}) {
-	#say STDERR "getting modeldb";
+	say STDERR "getting ModelDB" if $debug;
 	$config->{modeldir} = $self->fetch_hmm_models;
 	print STDERR ".";
     }
     
-    unless (-e $config->{hmmdir}) {
-	#say STDERR "getting hmmdir";
-	$config->{hmmdir} = $self->make_chrom_dir;
+    unless (-e $config->{chrhmm}) {
+	say STDERR "writing Chromosome HMM file" if $debug;
+	$config->{chrhmm} = $self->make_chrom_dir($config->{chrhmm});
 	print STDERR ".";
     }
     
     unless (-e $config->{mgescan} && -e $config->{transcmd}) {
-	#say STDERR "getting mgescan and trans";
-	($config->{mgescan}, $config->{transcmd}) = $self->build_mgescan;
+	say STDERR "getting MGEScan and translate-cmd" if $debug;
+	($config->{mgescan}, $config->{transcmd}) = $self->build_mgescan($config->{tephrabin});
 	print STDERR ".";
     }
     
-    unless (-e $config->{pamlbin}) {
-	#say STDERR "getting paml";
-	$config->{pamlbin} = $self->fetch_paml;
+    unless (-e $config->{baseml} && -x $config->{baseml}) {
+	say STDERR "getting PAML" if $debug;
+	$config->{baseml} = $self->fetch_paml($config->{tephrabin});
 	print STDERR ".";
     }
     
-    unless (-e $config->{transeq}) {
-	#say STDERR "getting emboss";
-	$config->{transeq} = $self->fetch_emboss;
-	print STDERR ".";
-    }
-
-    unless (-e $config->{blastpath}) {
-	#say STDERR "getting blast";
-        $config->{blastpath} = $self->fetch_blast;
+    unless (-e $config->{blastn} && -x $config->{blastn} &&
+	    -e $config->{makeblastdb} && -x $config->{makeblastdb}) {
+	say STDERR "getting BLAST" if $debug;
+        ($config->{blastn}, $config->{makeblastdb}) = $self->fetch_blast($config->{tephrabin});
 	print STDERR ".";
     }
 
     unless (-e $config->{htslibdir}) {
-	#say STDERR "getting htslib";
+	say STDERR "getting HTSlib" if $debug;
         $config->{htslibdir} = $self->fetch_htslib;
 	print STDERR ".";
     }
 
     unless (-e $config->{muscle}) {
-        #say STDERR "getting htslib"; 
-        $config->{muscle} = $self->fetch_muscle;
+        say STDERR "getting MUSCLE" if $debug; 
+        $config->{muscle} = $self->fetch_muscle($config->{tephrabin});
         print STDERR ".";
     }
 
@@ -150,10 +163,13 @@ sub configure_root {
 }
 
 sub fetch_gt_exes {
-    my $self = shift;
+    my $self   = shift;
+    my ($bindir) = @_;
+
     my $root = $self->basedir->absolute->resolve;
     my $wd   = $self->workingdir->absolute->resolve;
     
+    ##TODO: fetch from github  
     my $host = 'http://genometools.org';
     my $dir  = 'pub/binary_distributions';
     my $file = 'gt_distlisting.html';
@@ -165,7 +181,7 @@ sub fetch_gt_exes {
     my ($dist, $ldist, $ldir);
     for my $tag ($tree->look_down(_tag => 'a')) {
 	if ($tag->attr('href')) {
-	    if ($tag->as_text =~ /Linux_x86_64-64bit-barebone.tar.gz\z/) {
+	    if ($tag->as_text =~ /1.6.\d+\-Linux_x86_64-64bit-barebone.tar.gz\z/) {
 		$dist = $tag->as_text;
 		my $archive = join "/", $host, $dir, $dist;
 		$self->fetch_file($dist, $archive);
@@ -173,59 +189,68 @@ sub fetch_gt_exes {
 		$ldist = $dist;
 		$ldist =~ s/\.tar.gz\z//;
 		$ldir = File::Spec->catdir($root, 'gt');
-		
-		system("tar xzf $dist") == 0 or die $!;
-		
-		move $ldist, $ldir or die "\n[ERROR]: move failed: $!\n";
-		unlink $dist;
 	    }
 	}
     }
     unlink $file;
-    
-    my $gt = File::Spec->catfile($ldir, 'bin', 'gt');
 
-    return $gt
+    system("tar xzf $dist") == 0 or die $!;
+    move $ldist, $ldir or die "\n[ERROR]: move failed: $ldist -> $ldir: $!\n";
+    
+    my $lgt = File::Spec->catfile($ldir, 'bin', 'gt');
+    my $tgt = File::Spec->catfile($bindir, 'gt');
+    copy $lgt, $tgt or die "\n[ERROR]: copy failed: $lgt -> $tgt: $!\n";
+    chmod 0755, $tgt;
+
+    my $gtdata  = File::Spec->catdir($ldir, 'gtdata');
+    my $tgtdata = File::Spec->catdir($root, 'gtdata');
+    move $gtdata, $tgtdata or die "\n[ERROR]: move failed: $gtdata -> $tgtdata: $!\n";
+
+    remove_tree( $ldir, { safe => 1 } );
+    my $pwd = Cwd::getcwd();
+    unlink $dist;
+    
+    return $tgt;
 }
 
 sub fetch_vmatch_exes {
-    my $self = shift;
+    my $self   = shift;
+    my ($bindir) = @_;
+
     my $root = $self->basedir->absolute->resolve;
     my $wd   = $self->workingdir->absolute->resolve;
     
+    ##TODO: fetch from github  
     my $host = 'http://vmatch.de';
     my $dir  = 'distributions';
-    my $page = 'download.html';
-    my $file = 'vmatch_distlisting.html';
-    $self->fetch_file($file, $host."/".$page);
-    
-    my $tree = HTML::TreeBuilder->new;
-    $tree->parse_file($file);
-    
-    my ($dist, $ldist, $ldir);
-    for my $tag ($tree->look_down(_tag => 'a')) {
-	if ($tag->attr('href')) {
-	    if ($tag->as_text =~ /Linux_x86_64-64bit.tar.gz\z/) {
-		$dist = $tag->as_text;
-		my $archive = join "/", $host, $dir, $dist;
-		$self->fetch_file($dist, $archive);
-		
-		$ldist = $dist;
-		$ldist =~ s/\.tar.gz\z//;
-		$ldir = File::Spec->catdir($root, 'vmatch');
-		
-		system("tar xzf $dist") == 0 or die $!;
-		
-		move $ldist, $ldir or die "\n[ERROR]: move failed: $!\n";
-		unlink $dist;
-	    }
-	}
-    }
-    unlink $file;
-    
-    my $vmatchbin = File::Spec->catfile($ldir);
+    my $file = 'vmatch-2.3.0-Linux_x86_64-64bit.tar.gz';
+    my $url     = join "/", $host, $dir, $file;
+    my $outfile = File::Spec->catfile($root, $file);
 
-    return $vmatchbin;
+    system("wget -q -O $outfile $url 2>&1 > /dev/null") == 0
+        or die $!;
+    chdir $root;
+    my $dist = 'vmatch-2.3.0-Linux_x86_64-64bit';
+    my $ldir = File::Spec->catdir($root, $dist);
+    system("tar xzf $file") == 0 or die "tar failed: $!";
+    
+    my $distfile = File::Spec->catfile($root, $file);
+    unlink $distfile;
+    
+    my $vmatch   = File::Spec->catfile($ldir, 'vmatch');
+    my $mkvtree  = File::Spec->catfile($ldir, 'mkvtree');
+    my $cleanpp  = File::Spec->catfile($ldir, 'cleanpp.sh');
+    my $tvmatch  = File::Spec->catfile($bindir, 'vmatch');
+    my $tmkvtree = File::Spec->catfile($bindir, 'mkvtree');
+    my $tcleanpp = File::Spec->catfile($bindir, 'cleanpp.sh');
+    copy $vmatch, $tvmatch or die "\n[ERROR]: copy failed: $!\n";
+    copy $mkvtree, $tmkvtree or die "\n[ERROR]: copy failed: $!\n";
+    copy $cleanpp, $tcleanpp or die "\n[ERROR]: copy failed: $!\n";
+    chmod 0755, $tvmatch, $tmkvtree, $tcleanpp;
+
+    remove_tree( $ldir, { safe => 1 } );
+
+    return ($tvmatch, $tmkvtree, $tcleanpp);
 }
 
 sub fetch_hscan {
@@ -253,7 +278,9 @@ sub fetch_hscan {
 }
 
 sub fetch_blast {
-    my $self = shift;
+    my $self   = shift;
+    my ($bindir) = @_;
+
     my $root = $self->basedir->absolute->resolve;
 
     chdir $root or die $!;
@@ -269,18 +296,25 @@ sub fetch_blast {
     $ldir =~ s/\-x64-linux.tar.gz//;
 
     unlink $file if -e $file;
-    move $ldir, $bdir or die "\n[ERROR]: move failed: $!\n";
- 
-    my $blastpath = File::Spec->catfile($root, $bdir, 'bin');
+    my $blastn   = File::Spec->catfile($ldir, 'bin', 'blastn');
+    my $mblastdb = File::Spec->catfile($ldir, 'bin', 'makeblastdb');
+    my $tblastn   = File::Spec->catfile($bindir, 'blastn');
+    my $tmblastdb = File::Spec->catfile($bindir, 'makeblastdb');
 
-    return $blastpath;
+    copy $blastn, $tblastn or die "\n[ERROR]: copy failed: $blastn -> $tblastn $!\n"; # $tblastn means tephra copy, not to be confused with tblastn
+    copy $mblastdb, $tmblastdb or die "\n[ERROR]: copy failed: $mblastdb -> $tmblastdb $!\n";
+    chmod 0755, $tblastn, $tmblastdb;
+    remove_tree( $ldir, { safe => 1 } );
+
+    return ($tblastn, $tmblastdb);
 }
 
 sub fetch_hmmer2 {
     my $self = shift;
     my $root = $self->basedir->absolute->resolve;
     my $wd   = $self->workingdir->absolute->resolve;
-    
+
+    ##TODO: fetch from github
     my $urlbase = 'http://eddylab.org'; 
     my $dir     = 'software';
     my $tool    = 'hmmer';
@@ -314,6 +348,7 @@ sub fetch_hmmer3 {
     my $root = $self->basedir->absolute->resolve;
     my $wd   = $self->workingdir->absolute->resolve;
     
+    ##TODO: fetch from github  
     my $urlbase = 'http://eddylab.org'; 
     my $dir     = 'software';
     my $tool    = 'hmmer3';
@@ -324,9 +359,12 @@ sub fetch_hmmer3 {
     $self->fetch_file($outfile, $url);
 
     chdir $root;
-    my $dist = 'hmmer-3.1b2-linux-intel-x86_64';
+    my $dist  = 'hmmer-3.1b2-linux-intel-x86_64';
+    my $ldist = 'hmmer-3.1b2';
+
     system("tar xzf $file") == 0 or die "tar failed: $!";
-    chdir $dist;
+    move $dist, $ldist or die "\n[ERROR]: move failed: $!\n";
+    chdir $ldist;
     my $cwd = getcwd();
     my $hmmer3bin = File::Spec->catdir($cwd, 'binaries');
     my $distfile  = File::Spec->catfile($root, $file);
@@ -337,30 +375,27 @@ sub fetch_hmmer3 {
 }
 
 sub fetch_paml {
-    my $self = shift;
+    my $self   = shift;
+    my ($bindir) = @_;
+
     my $root = $self->basedir->absolute->resolve;
     my $wd   = $self->workingdir->absolute->resolve;
 
-    my $urlbase = 'http://abacus.gene.ucl.ac.uk';
-    my $dir     = 'software';
-    my $file    = 'pamlX1.3.1+paml4.8a-win32.tgz';
+    my $urlbase = 'https://github.com';
+    my $dir     = 'abacus-gene/paml/archive/refs/tags';
+    my $file    = 'v4.10.6.tar.gz';
     my $url     = join "/", $urlbase, $dir, $file;
     my $outfile = File::Spec->catfile($root, $file);
     $self->fetch_file($outfile, $url);
 
     chdir $root;
-    my $dist  = 'paml4.8';
-    my $xdist = 'pamlX';
+    my $dist  = 'paml-4.10.6';
     system("tar xzf $file") == 0 or die "tar failed: $!";
-    remove_tree( $xdist, { safe => 1 } );
     unlink $file;
 
     chdir $dist;
     my $cwd = getcwd();
     my $bin = File::Spec->catdir($cwd, 'bin');
-    my @exes;
-    find( sub { push @exes, $File::Find::name if -f and /\.exe$/ }, $bin );
-    unlink @exes;
     chdir 'src';
 
     my @results = capture { system('make', '-j4') };
@@ -372,36 +407,26 @@ sub fetch_paml {
     }
 
     my @exelist = ('yn00', 'baseml', 'basemlg', 'mcmctree', 'pamp', 'evolver', 'infinitesites', 'codeml');
-    my $rootdir = File::Spec->catdir($root, 'paml4.8', 'bin');
-    unless ( -d $rootdir ) {
-	make_path( $rootdir, {verbose => 0, mode => 0771,} );
+
+    for my $file (grep { /baseml\z/ } @exelist) {
+	my $binfile = File::Spec->catfile($bindir, $file);
+	copy $file, $binfile or die "Copy failed: $file -> $binfile $!";
+	chmod 0755, $binfile;
     }
 
-    for my $file (@exelist) {
-	copy $file, $rootdir or die "Copy failed: $!";
-    }
+    chdir $root;
+    remove_tree( $dist, { safe => 1 } );
+    my $baseml = File::Spec->catfile($bindir, 'baseml');
 
-    my @nonexes = map { File::Spec->catfile($rootdir, $_) } @exelist;
-    my $cnt = chmod 0755, @nonexes;
-    
-    if ($cnt == @exelist) {
-	return $rootdir;
-    }
+    return $baseml;
 }
 
 sub fetch_emboss {
-    my $self = shift;
+    my $self   = shift;
+    my ($bindir) = @_;
+
     my $root = $self->basedir->absolute->resolve;
     my $wd   = $self->workingdir->absolute->resolve;
-
-    # this is to avoid building each time
-    #my @path = split /:|;/, $ENV{PATH};    
-    #for my $p (@path) {
-	#my $transeq  = File::Spec->catfile($p, 'transeq');
-	#if (-e $transeq && -x $transeq) {
-	#    return $transeq;
-	#}
-    #}
 
     my $urlbase = 'ftp://emboss.open-bio.org';
     my $dir     = 'pub';
@@ -415,21 +440,63 @@ sub fetch_emboss {
     system("wget -q -O $outfile $url 2>&1 > /dev/null") == 0
 	or die $!;
     chdir $root;
-    my $dist = 'EMBOSS-6.5.7';
+    my $dist = File::Spec->catdir($root, 'EMBOSS-6.5.7');
     system("tar xzf $file") == 0 or die "tar failed: $!";
     chdir $dist;
     my $cwd = getcwd();
-    system("./configure --without-x --prefix=$cwd 2>&1 > /dev/null") == 0
+    system("./configure --without-x --without-mysql --disable-shared --prefix=$root 2>&1 > /dev/null") == 0
 	or die "configure failed: $!";
-    system("make -j4 2>&1 > /dev/null") == 0 
-	or die "make failed: $!";
-    system("make install 2>&1 > /dev/null") == 0
-	or die "make failed: $!";
-    
-    my $transeq  = File::Spec->catdir($cwd, 'bin', 'transeq');
+    #system("make -j4 2>&1 > /dev/null") == 0 
+	#or die "make failed: $!";
+    my @results = capture { system('make', '-j4') };
+    my @iresults = capture { system('make install') };
+    #system("make install 2>&1 > /dev/null") == 0
+	#or die "make failed: $!";
+
+    ## clean up
+    chdir $root or die $!;
+
     my $distfile = File::Spec->catfile($root, $file);
     unlink $distfile;
-    chdir $wd;
+    ##################################
+    my $share = File::Spec->catdir($root, 'share');
+    my $inc   = File::Spec->catdir($root, 'include');
+    my $lib   = File::Spec->catdir($root, 'lib');
+    my $bin   = File::Spec->catdir($root, 'bin');
+    my $data  = File::Spec->catdir($root, 'data');
+
+    remove_tree( $dist, { safe => 1 } );
+    remove_tree( $lib,  { safe => 1 } );
+    remove_tree( $inc,  { safe => 1 } );
+
+    my (@sharedirs, @sharefiles, @binfiles, @datafiles);
+    find(sub { push @sharedirs, $File::Find::name if -d and 
+		   /doc|index|jemboss|test|AAINDEX|CODONS|JASPAR|OBO|PRINTS|PROSITE|REBASE|TAXONOMY/ }, $share);
+    for my $dir (@sharedirs) { 
+	remove_tree( $dir, { safe => 1 } );
+    }
+
+    #find(sub { push @datafiles, $File::Find::name if -f }, $share);
+    #for my $file (@sharefiles) {
+	#my ($name, $path, $suffix) = fileparse($file, qr/\.[^.]*/);
+	#unlink $file unless $file =~ /EGC\.0$/;
+    #}
+
+    find(sub { push @sharefiles, $File::Find::name if -f }, $share);
+    #dd \@sharefiles;
+    for my $file (@sharefiles) {
+	my ($name, $path, $suffix) = fileparse($file, qr/\.[^.]*/);
+	next if $file =~ /EGC.0\z/;
+	unlink $file unless $name =~ /^transeq|knowntypes|codes/;
+    }
+
+    find(sub { push @binfiles, $File::Find::name }, $bin);
+    for my $file (@binfiles) {
+	my ($name, $path, $suffix) = fileparse($file, qr/\.[^.]*/);
+	unlink $file unless $name =~ /^transeq|gt|tephra|baseml|blast|vmatch|mkvtree|muscle|cleanpp/;
+    }
+    ##################################
+    my $transeq  = File::Spec->catdir($root, 'bin', 'transeq');
 
     return $transeq;
 }
@@ -458,11 +525,12 @@ sub fetch_htslib {
     my $cwd = getcwd();
     system("./configure --prefix=$cwd 2>&1 > /dev/null") == 0
 	or die "configure failed: $!";
-    system("make -j4 2>&1 > /dev/null") == 0 
-	or die "make failed: $!";
+    #system("make -j4 2>&1 > /dev/null") == 0 
+	#or die "make failed: $!";
+    my @results = capture { system('make', '-j4') };
     system("make install 2>&1 > /dev/null") == 0
 	or die "make failed: $!";
-    
+
     my $distfile = File::Spec->catfile($root, $file);
     unlink $distfile;
     chdir $wd;
@@ -470,56 +538,49 @@ sub fetch_htslib {
     $ENV{HTSLIB_DIR} = $libdir;
     #system("cpanm -q Bio::DB::HTS") == 0
 	#or die "Installing Bio::DB::HTS failed. Here is the HTSLIB_DIR: $libdir. [ERROR]: $!\n";
-    #system('cpanm', '-q', '-n', 'Bio::Root::Version') == 0
-        #or die "BioPerl install failed: $!";
-    #my @results = capture { system('cpanm', '-q', '-n', 'Bio::Root::Version') };
-    my @results = capture { system('cpanm', '-q', 'Bio::DB::HTS') };
+    my @iresults = capture { system('cpanm', '-q', 'Bio::DB::HTS') };
 
     return $libdir;
 }
 
 sub fetch_muscle {
-    my $self = shift;
+    my $self   = shift;
+    my ($bindir) = @_;
+
     my $root = $self->basedir->absolute->resolve;
     my $wd   = $self->workingdir->absolute->resolve;
-    
-    my $host = 'http://www.drive5.com';
+
+    chdir $root;
+    my $host = 'https://www.drive5.com';
     my $dir  = 'muscle';
-    my $page = 'downloads.htm';
-    my $file = 'muscle_distlisting.html';
-    my $endpoint = join "/", $host, $dir, $page;
+    my $ddir = 'downloads3.8.31';
+    my $file = 'muscle3.8.31_src.tar.gz';
+    my $dist = $file =~ s/_.*//r;
+    my $endpoint = join "/", $host, $dir, $ddir, $file;
     $self->fetch_file($file, $endpoint);
-    
-    my $tree = HTML::TreeBuilder->new;
-    $tree->parse_file($file);
-    
-    my ($dist, $ldist, $ldir, $musbin);
-    for my $tag ($tree->look_down(_tag => 'a')) {
-        if ($tag->attr('href')) {
-            if ($tag->as_text =~ /muscle(\d+\.\d+\.\d+)_i86linux64.tar.gz\z/) {
-		my $ver = $1;
-		my $vdir = "downloads$ver";
-                $dist = $tag->as_text;
-                my $archive = join "/", $host, $dir, $vdir, $dist;
-                $self->fetch_file($dist, $archive);
-                
-                $ldist = $dist;
-                $ldist =~ s/\.tar.gz\z//;
-                $ldir = File::Spec->catdir($root, 'muscle'); #$ldist);
-		make_path( $ldir, {verbose => 0, mode => 0771,} );
-                $musbin = File::Spec->catfile($ldir, 'muscle');
-                system("tar xzf $dist") == 0 or die $!;
-                
-                move $ldist, $musbin or die "\n[ERROR]: move failed: $!\n";
-                unlink $dist;
-            }
-        }
-    }
+
+    system("tar xzf $file") == 0 or die "tar failed: $!";
+    my $src = File::Spec->catdir($dist, 'src');
+    my $musclebin = File::Spec->catfile($root, $dist, 'src', 'muscle');
     unlink $file;
     
-    #my $musbin = File::Spec->catfile($ldir, 'muscle');
+    chdir $src;
+    my $outfile = 'mk.tmp';
+    open my $out, '>', $outfile;
+    open my $in, '<', 'mk';
+    while (<$in>) { chomp; if (/echo/) { s/echo/#echo/g; } say $out $_; }
+    close $in;
+    close $out;
+    move $outfile, 'mk' or die "Move failed: $outfile -> mk $!";
+    my @results = capture { system('make', '-j4') };
 
-    return $musbin;
+    my $muscle = File::Spec->catfile($bindir, 'muscle');
+    copy $musclebin, $muscle or die "Copy failed: $musclebin -> $muscle $!";
+    chmod 0755, $muscle;
+
+    remove_tree( $dist, { safe => 1 } );
+    
+    return $muscle;
 }
 
 sub fetch_trnadb {
@@ -605,14 +666,10 @@ sub fetch_hmm_models {
 sub make_chrom_dir {
     my $self = shift;
     my $root = $self->basedir->absolute->resolve;
+    my ($chr_file) = @_;
 
-    my $hmm_dir = File::Spec->catdir($root, 'hmm');
-    unless ( -d $hmm_dir ) {
-        make_path( $hmm_dir, {verbose => 0, mode => 0771,} );
-    }
+    open my $out, '>', $chr_file or die "\n[ERROR]: Could not open file: $chr_file\n";
 
-    my $chr_file = File::Spec->catfile($hmm_dir, 'chr.hmm');
-    open my $out, '>', $chr_file;
     say $out "Symbol= 4";
     say $out "State= 33";
     say $out "Transition= 73";
@@ -686,38 +743,39 @@ sub make_chrom_dir {
     print $out '0.05';
     close $out;
 
-    return $hmm_dir;
+    return $chr_file;
 }
 
 sub build_mgescan {
     my $self = shift;
+    my ($bindir) = @_;
+
     my $root = $self->basedir->absolute->resolve;
     my $wd   = $self->workingdir->absolute->resolve;
 
-    my $hmm_dir = File::Spec->catdir($root, 'hmm');
     my $src_dir = File::Spec->catdir($wd, 'src');
     my $mgexe   = 'tephra-MGEScan';
     my $trexe   = 'tephra-translate';
-    my $mgescan = File::Spec->catfile($hmm_dir, $mgexe);
-    my $transla = File::Spec->catfile($hmm_dir, $trexe);
+    my $mgescan = File::Spec->catfile($bindir, $mgexe);
+    my $transla = File::Spec->catfile($bindir, $trexe);
 
     chdir $src_dir;
     system("make clean -f mgescan-makefile 2>&1 >/dev/null") == 0 
 	or die "make failed: $!";
-    system("make -f mgescan-makefile 2>&1 >/dev/null") == 0 
-	or die "make failed: $!";
+    #system("make -f mgescan-makefile 2>&1 >/dev/null") == 0 
+	#or die "make failed: $!";
+    my @mgescanres = capture { system('make -f mgescan-makefile') };
     system("make clean -f translate-makefile 2>&1 >/dev/null") == 0
         or die "make failed: $!";
-    system("make all -f translate-makefile 2>&1 >/dev/null") == 0
-        or die "make failed: $!";
+    #system("make all -f translate-makefile 2>&1 >/dev/null") == 0
+        #or die "make failed: $!";
+    my @translres = capture { system('make all -f translate-makefile') };
     
-    copy $mgexe, $hmm_dir or die "Copy failed: $!";
-    copy $trexe, $hmm_dir or die "Copy failed: $!";
-    my $cnt = chmod 0755, $mgescan, $transla;
+    copy $mgexe, $bindir or die "Copy failed: $!";
+    copy $trexe, $bindir or die "Copy failed: $!";
+    chmod 0755, $mgescan, $transla;
     
-    if ($cnt == 2 && -e $mgescan && -e $transla) {
-	return ($mgescan, $transla);
-    }
+    return ($mgescan, $transla);
 }
 
 sub fetch_file {
